@@ -1,290 +1,231 @@
-from collections import defaultdict
-from pathlib import Path
-import sqlite3
 
 import streamlit as st
-import altair as alt
 import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import warnings
+warnings.filterwarnings("ignore")
 
-
-# Set the title and favicon that appear in the Browser's tab bar.
+# ─────────────────────────────────────────────────────────
+#  PAGE CONFIG
+# ─────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Inventory tracker",
-    page_icon=":shopping_bags:",  # This is an emoji shortcode. Could be a URL too.
+    page_title="Supermarket Sales Monitoring",
+    page_icon="🛒",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
+# ─────────────────────────────────────────────────────────
+#  THEME
+# ─────────────────────────────────────────────────────────
+PALETTE    = ["#38BDF8","#818CF8","#34D399","#FB923C","#F472B6","#FACC15","#A78BFA"]
+BG         = "#0F172A"
+CARD_BG    = "#1E293B"
+GRID_COLOR = "#334155"
+TEXT_COLOR = "#F1F5F9"
+ACCENT     = "#38BDF8"
+POS        = "#34D399"
+WARN       = "#FACC15"
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+PLOTLY_LAYOUT = dict(
+    paper_bgcolor = BG,
+    plot_bgcolor  = CARD_BG,
+    font          = dict(color=TEXT_COLOR, family="sans-serif", size=12),
+    xaxis         = dict(gridcolor=GRID_COLOR, linecolor=GRID_COLOR, showgrid=True),
+    yaxis         = dict(gridcolor=GRID_COLOR, linecolor=GRID_COLOR, showgrid=True),
+    margin        = dict(l=10, r=10, t=50, b=10),
+    legend        = dict(bgcolor=CARD_BG, bordercolor=GRID_COLOR, borderwidth=1),
+    hoverlabel    = dict(bgcolor=CARD_BG, font_color=TEXT_COLOR, bordercolor=ACCENT),
+)
 
+def apply_theme(fig, height=380):
+    fig.update_layout(**PLOTLY_LAYOUT, height=height)
+    return fig
 
-def connect_db():
-    """Connects to the sqlite database."""
+MONTHS_ORDER = ["2019-01", "2019-02", "2019-03"]
+DAYS_ORDER   = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
 
-    DB_FILENAME = Path(__file__).parent / "inventory.db"
-    db_already_exists = DB_FILENAME.exists()
+# ─────────────────────────────────────────────────────────
+#  HEADER
+# ─────────────────────────────────────────────────────────
+st.title("🛒 Supermarket Sales Dashboard")
+st.caption("Workshop Data Analitik — Statistic Computer Course 2026 | Live Performance Monitor")
+st.divider()
 
-    conn = sqlite3.connect(DB_FILENAME)
-    db_was_just_created = not db_already_exists
+# ─────────────────────────────────────────────────────────
+#  LOAD DATA
+# ─────────────────────────────────────────────────────────
+URL_SHEET = (
+    "https://docs.google.com/spreadsheets/d/"
+    "16kweJYYuHeHgxxMfclM6iVSonWg5EIZ3W5ExrggmUIY/export?format=csv"
+)
 
-    return conn, db_was_just_created
+@st.cache_data(ttl=60)
+def load_data(url):
+    df = pd.read_csv(url)
+    df.columns = df.columns.str.replace("\ufeff", "", regex=False).str.strip().str.replace(r"\s+", " ", regex=True)
+    col_map = {c.lower(): c for c in df.columns}
+    rename  = {}
+    for target in ["Date","Time","Branch","City","Customer type","Gender",
+                   "Product line","Unit price","Quantity","Tax 5%","Total",
+                   "Payment","cogs","gross income","Rating","Invoice ID"]:
+        if target not in df.columns and target.lower() in col_map:
+            rename[col_map[target.lower()]] = target
+    if rename:
+        df = df.rename(columns=rename)
 
-
-def initialize_data(conn):
-    """Initializes the inventory table with some data."""
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS inventory (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            item_name TEXT,
-            price REAL,
-            units_sold INTEGER,
-            units_left INTEGER,
-            cost_price REAL,
-            reorder_point INTEGER,
-            description TEXT
-        )
-        """
-    )
-
-    cursor.execute(
-        """
-        INSERT INTO inventory
-            (item_name, price, units_sold, units_left, cost_price, reorder_point, description)
-        VALUES
-            -- Beverages
-            ('Bottled Water (500ml)', 1.50, 115, 15, 0.80, 16, 'Hydrating bottled water'),
-            ('Soda (355ml)', 2.00, 93, 8, 1.20, 10, 'Carbonated soft drink'),
-            ('Energy Drink (250ml)', 2.50, 12, 18, 1.50, 8, 'High-caffeine energy drink'),
-            ('Coffee (hot, large)', 2.75, 11, 14, 1.80, 5, 'Freshly brewed hot coffee'),
-            ('Juice (200ml)', 2.25, 11, 9, 1.30, 5, 'Fruit juice blend'),
-
-            -- Snacks
-            ('Potato Chips (small)', 2.00, 34, 16, 1.00, 10, 'Salted and crispy potato chips'),
-            ('Candy Bar', 1.50, 6, 19, 0.80, 15, 'Chocolate and candy bar'),
-            ('Granola Bar', 2.25, 3, 12, 1.30, 8, 'Healthy and nutritious granola bar'),
-            ('Cookies (pack of 6)', 2.50, 8, 8, 1.50, 5, 'Soft and chewy cookies'),
-            ('Fruit Snack Pack', 1.75, 5, 10, 1.00, 8, 'Assortment of dried fruits and nuts'),
-
-            -- Personal Care
-            ('Toothpaste', 3.50, 1, 9, 2.00, 5, 'Minty toothpaste for oral hygiene'),
-            ('Hand Sanitizer (small)', 2.00, 2, 13, 1.20, 8, 'Small sanitizer bottle for on-the-go'),
-            ('Pain Relievers (pack)', 5.00, 1, 5, 3.00, 3, 'Over-the-counter pain relief medication'),
-            ('Bandages (box)', 3.00, 0, 10, 2.00, 5, 'Box of adhesive bandages for minor cuts'),
-            ('Sunscreen (small)', 5.50, 6, 5, 3.50, 3, 'Small bottle of sunscreen for sun protection'),
-
-            -- Household
-            ('Batteries (AA, pack of 4)', 4.00, 1, 5, 2.50, 3, 'Pack of 4 AA batteries'),
-            ('Light Bulbs (LED, 2-pack)', 6.00, 3, 3, 4.00, 2, 'Energy-efficient LED light bulbs'),
-            ('Trash Bags (small, 10-pack)', 3.00, 5, 10, 2.00, 5, 'Small trash bags for everyday use'),
-            ('Paper Towels (single roll)', 2.50, 3, 8, 1.50, 5, 'Single roll of paper towels'),
-            ('Multi-Surface Cleaner', 4.50, 2, 5, 3.00, 3, 'All-purpose cleaning spray'),
-
-            -- Others
-            ('Lottery Tickets', 2.00, 17, 20, 1.50, 10, 'Assorted lottery tickets'),
-            ('Newspaper', 1.50, 22, 20, 1.00, 5, 'Daily newspaper')
-        """
-    )
-    conn.commit()
-
-
-def load_data(conn):
-    """Loads the inventory data from the database."""
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute("SELECT * FROM inventory")
-        data = cursor.fetchall()
-    except:
-        return None
-
-    df = pd.DataFrame(
-        data,
-        columns=[
-            "id",
-            "item_name",
-            "price",
-            "units_sold",
-            "units_left",
-            "cost_price",
-            "reorder_point",
-            "description",
-        ],
-    )
-
+    df["Date"]     = pd.to_datetime(df["Date"], errors="coerce")
+    df["Month"]    = df["Date"].dt.to_period("M").astype(str)
+    df["MonthNum"] = df["Date"].dt.month
+    df["DOW"]      = df["Date"].dt.day_name()
+    df["Hour"]     = pd.to_datetime(df["Time"], format="%H:%M", errors="coerce").dt.hour
+    df["Week"]     = df["Date"].dt.isocalendar().week.astype(int)
     return df
 
+try:
+    df_raw = load_data(URL_SHEET)
 
-def update_data(conn, df, changes):
-    """Updates the inventory data in the database."""
-    cursor = conn.cursor()
+    # ─────────────────────────────────────────────────────
+    #  SIDEBAR FILTERS
+    # ─────────────────────────────────────────────────────
+    st.sidebar.header("⚙️ Filter Data")
 
-    if changes["edited_rows"]:
-        deltas = st.session_state.inventory_table["edited_rows"]
-        rows = []
+    cabang = st.sidebar.multiselect("Cabang (Branch)", options=sorted(df_raw["Branch"].unique()), default=sorted(df_raw["Branch"].unique()))
+    tipe = st.sidebar.multiselect("Tipe Pelanggan", options=list(df_raw["Customer type"].unique()), default=list(df_raw["Customer type"].unique()))
+    produk = st.sidebar.multiselect("Lini Produk", options=sorted(df_raw["Product line"].unique()), default=sorted(df_raw["Product line"].unique()))
 
-        for i, delta in deltas.items():
-            row_dict = df.iloc[i].to_dict()
-            row_dict.update(delta)
-            rows.append(row_dict)
+    if st.sidebar.button("🔄 Sinkronisasi Data Terbaru"):
+        st.cache_data.clear()
+        st.rerun()
 
-        cursor.executemany(
-            """
-            UPDATE inventory
-            SET
-                item_name = :item_name,
-                price = :price,
-                units_sold = :units_sold,
-                units_left = :units_left,
-                cost_price = :cost_price,
-                reorder_point = :reorder_point,
-                description = :description
-            WHERE id = :id
-            """,
-            rows,
-        )
+    # Apply filters
+    df = df_raw[
+        df_raw["Branch"].isin(cabang) &
+        df_raw["Customer type"].isin(tipe) &
+        df_raw["Product line"].isin(produk)
+    ].copy()
 
-    if changes["added_rows"]:
-        cursor.executemany(
-            """
-            INSERT INTO inventory
-                (id, item_name, price, units_sold, units_left, cost_price, reorder_point, description)
-            VALUES
-                (:id, :item_name, :price, :units_sold, :units_left, :cost_price, :reorder_point, :description)
-            """,
-            (defaultdict(lambda: None, row) for row in changes["added_rows"]),
-        )
+    if df.empty:
+        st.warning("Tidak ada data yang sesuai dengan filter.")
+        st.stop()
 
-    if changes["deleted_rows"]:
-        cursor.executemany(
-            "DELETE FROM inventory WHERE id = :id",
-            ({"id": int(df.loc[i, "id"])} for i in changes["deleted_rows"]),
-        )
+    # ─────────────────────────────────────────────────────
+    #  KPI METRICS
+    # ─────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("💰 Total Revenue",   f"${df['Total'].sum():,.0f}")
+    k2.metric("💵 Gross Income",    f"${df['gross income'].sum():,.0f}")
+    k3.metric("🧾 Transaksi",       f"{len(df):,}")
+    k4.metric("🛒 Avg Basket Size", f"${df['Total'].mean():,.2f}")
+    k5.metric("⭐ Avg Rating",      f"{df['Rating'].mean():.2f} / 10")
 
-    conn.commit()
+    st.divider()
 
+    # ─────────────────────────────────────────────────────
+    #  TABS
+    # ─────────────────────────────────────────────────────
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📈 Performa Bisnis",
+        "⏰ Pemantauan Operasional",
+        "🎯 Strategi & Pelanggan",
+        "📋 Data Center",
+    ])
 
-# -----------------------------------------------------------------------------
-# Draw the actual page, starting with the inventory table.
+    # ====================================================
+    #  TAB 1 — PERFORMA BISNIS
+    # ====================================================
+    with tab1:
+        # Dual-axis monthly trend
+        monthly = df.groupby("Month").agg(Revenue=("Total","sum"), Transactions=("Invoice ID","count")).reset_index()
+        fig = make_subplots(specs=[[{"secondary_y": True}]])
+        fig.add_trace(go.Bar(x=monthly["Month"], y=monthly["Revenue"], name="Revenue ($)", marker_color=ACCENT), secondary_y=False)
+        fig.add_trace(go.Scatter(x=monthly["Month"], y=monthly["Transactions"], name="Transaksi", mode="lines+markers", line=dict(color=WARN, width=3), marker=dict(size=9, color=WARN)), secondary_y=True)
+        fig.update_layout(title="Tren Pendapatan & Volume Transaksi Bulanan", **PLOTLY_LAYOUT, height=350)
+        st.plotly_chart(fig, use_container_width=True)
 
-# Set the title that appears at the top of the page.
-"""
-# :shopping_bags: Inventory tracker
+        c1, c2 = st.columns(2)
+        with c1:
+            br = df.groupby("Branch")["Total"].sum().reset_index()
+            fig = px.bar(br, x="Branch", y="Total", color="Branch", color_discrete_sequence=PALETTE, text=br["Total"].apply(lambda v: f"${v:,.0f}"), title="Pendapatan per Cabang")
+            fig.update_traces(textposition="outside")
+            st.plotly_chart(apply_theme(fig), use_container_width=True)
 
-**Welcome to Alice's Corner Store's intentory tracker!**
-This page reads and writes directly from/to our inventory database.
-"""
+        with c2:
+            pl = df.groupby("Product line")["Total"].sum().sort_values().reset_index()
+            fig = px.bar(pl, y="Product line", x="Total", orientation="h", color="Total", color_continuous_scale=["#1E293B","#38BDF8"], text=pl["Total"].apply(lambda v: f"${v:,.0f}"), title="Pendapatan per Lini Produk")
+            fig.update_traces(textposition="outside")
+            fig.update_coloraxes(showscale=False)
+            st.plotly_chart(apply_theme(fig), use_container_width=True)
 
-st.info(
-    """
-    Use the table below to add, remove, and edit items.
-    And don't forget to commit your changes when you're done.
-    """
-)
+    # ====================================================
+    #  TAB 2 — PEMANTAUAN OPERASIONAL
+    # ====================================================
+    with tab2:
+        c1, c2 = st.columns(2)
+        with c1:
+            hourly = df.groupby("Hour").agg(Transactions=("Invoice ID","count")).reset_index()
+            fig = px.line(hourly, x="Hour", y="Transactions", markers=True, title="Arus Transaksi per Jam (Traffic Pantau)")
+            fig.update_traces(line_color=ACCENT, line_width=3, marker=dict(size=8, color=WARN))
+            if not hourly.empty:
+                peak = int(hourly.loc[hourly["Transactions"].idxmax(), "Hour"])
+                fig.add_vline(x=peak, line_dash="dash", line_color=WARN, annotation_text=f" Peak Hour: {peak}:00", annotation_font_color=WARN)
+            st.plotly_chart(apply_theme(fig), use_container_width=True)
 
-# Connect to database and create table if needed
-conn, db_was_just_created = connect_db()
+        with c2:
+            dow = df.groupby("DOW")["Total"].sum().reindex([d for d in DAYS_ORDER if d in df["DOW"].unique()]).reset_index()
+            fig = px.bar(dow, x="DOW", y="Total", color="Total", color_continuous_scale=["#1E293B","#818CF8"], text=dow["Total"].apply(lambda v: f"${v:,.0f}"), title="Pendapatan per Hari")
+            fig.update_traces(textposition="outside")
+            fig.update_coloraxes(showscale=False)
+            st.plotly_chart(apply_theme(fig), use_container_width=True)
 
-# Initialize data.
-if db_was_just_created:
-    initialize_data(conn)
-    st.toast("Database initialized with some sample data.")
+        # Heatmap Ops
+        heat = df.pivot_table(index="Product line", columns="Branch", values="Total", aggfunc="sum").fillna(0)
+        fig = go.Figure(go.Heatmap(z=heat.values, x=heat.columns.tolist(), y=heat.index.tolist(), colorscale="Blues", text=heat.values.astype(int), texttemplate="$%{text:,}"))
+        fig.update_layout(title="Distribusi Beban Penjualan: Produk x Cabang", **PLOTLY_LAYOUT, height=350)
+        st.plotly_chart(fig, use_container_width=True)
 
-# Load data from database
-df = load_data(conn)
+    # ====================================================
+    #  TAB 3 — STRATEGI & PELANGGAN
+    # ====================================================
+    with tab3:
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            fig = px.pie(df, names="Customer type", color="Customer type", color_discrete_map={"Member":"#818CF8","Normal":"#34D399"}, hole=0.5, title="Komposisi Pelanggan")
+            st.plotly_chart(apply_theme(fig, height=350), use_container_width=True)
+        with c2:
+            fig = px.pie(df, names="Payment", color_discrete_sequence=PALETTE, hole=0.5, title="Metode Pembayaran")
+            st.plotly_chart(apply_theme(fig, height=350), use_container_width=True)
+        with c3:
+            mem = df.groupby(["Branch","Customer type"]).size().reset_index(name="Count")
+            fig = px.bar(mem, x="Branch", y="Count", color="Customer type", barmode="group", color_discrete_map={"Member":"#818CF8","Normal":"#34D399"}, title="Member vs Normal per Cabang")
+            fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02))
+            st.plotly_chart(apply_theme(fig, height=350), use_container_width=True)
 
-# Display data with editable table
-edited_df = st.data_editor(
-    df,
-    disabled=["id"],  # Don't allow editing the 'id' column.
-    num_rows="dynamic",  # Allow appending/deleting rows.
-    column_config={
-        # Show dollar sign before price columns.
-        "price": st.column_config.NumberColumn(format="$%.2f"),
-        "cost_price": st.column_config.NumberColumn(format="$%.2f"),
-    },
-    key="inventory_table",
-)
+        rfm = df.groupby("Product line").agg(Transactions=("Invoice ID","count"), AvgBasket=("Total","mean"), TotalRevenue=("Total","sum")).reset_index()
+        fig = px.scatter(rfm, x="Transactions", y="AvgBasket", size="TotalRevenue", color="Product line", color_discrete_sequence=PALETTE, text="Product line", size_max=60, title="Matriks Performa Produk (Volume vs Avg Basket)")
+        fig.update_traces(textposition="top center")
+        st.plotly_chart(apply_theme(fig, height=400), use_container_width=True)
 
-has_uncommitted_changes = any(len(v) for v in st.session_state.inventory_table.values())
+    # ====================================================
+    #  TAB 4 — DATA CENTER
+    # ====================================================
+    with tab4:
+        with st.expander("🔀 Custom Pivot Table (Untuk Eksplorasi Cepat)", expanded=True):
+            pv1, pv2, pv3, pv4 = st.columns(4)
+            pv_row = pv1.selectbox("Baris:", ["Branch","City","Product line","Customer type","Payment"])
+            pv_col = pv2.selectbox("Kolom:", ["Month","DOW","Customer type","Gender"])
+            pv_val = pv3.selectbox("Nilai:", ["Total","gross income","Quantity","Rating"])
+            pv_agg = pv4.selectbox("Agregasi:", ["sum","mean","count"])
 
-st.button(
-    "Commit changes",
-    type="primary",
-    disabled=not has_uncommitted_changes,
-    # Update data in database
-    on_click=update_data,
-    args=(conn, df, st.session_state.inventory_table),
-)
+            pivot = df.pivot_table(index=pv_row, columns=pv_col, values=pv_val, aggfunc=pv_agg).round(2)
+            st.dataframe(pivot, use_container_width=True)
 
+        st.subheader("Log Transaksi")
+        st.dataframe(df[["Invoice ID","Date","Time","Branch","Customer type","Product line","Unit price","Quantity","Total","Payment"]].reset_index(drop=True), use_container_width=True, height=400)
 
-# -----------------------------------------------------------------------------
-# Now some cool charts
-
-# Add some space
-""
-""
-""
-
-st.subheader("Units left", divider="red")
-
-need_to_reorder = df[df["units_left"] < df["reorder_point"]].loc[:, "item_name"]
-
-if len(need_to_reorder) > 0:
-    items = "\n".join(f"* {name}" for name in need_to_reorder)
-
-    st.error(f"We're running dangerously low on the items below:\n {items}")
-
-""
-""
-
-st.altair_chart(
-    # Layer 1: Bar chart.
-    alt.Chart(df)
-    .mark_bar(
-        orient="horizontal",
-    )
-    .encode(
-        x="units_left",
-        y="item_name",
-    )
-    # Layer 2: Chart showing the reorder point.
-    + alt.Chart(df)
-    .mark_point(
-        shape="diamond",
-        filled=True,
-        size=50,
-        color="salmon",
-        opacity=1,
-    )
-    .encode(
-        x="reorder_point",
-        y="item_name",
-    ),
-    use_container_width=True,
-)
-
-st.caption("NOTE: The :diamonds: location shows the reorder point.")
-
-""
-""
-""
-
-# -----------------------------------------------------------------------------
-
-st.subheader("Best sellers", divider="orange")
-
-""
-""
-
-st.altair_chart(
-    alt.Chart(df)
-    .mark_bar(orient="horizontal")
-    .encode(
-        x="units_sold",
-        y=alt.Y("item_name").sort("-x"),
-    ),
-    use_container_width=True,
-)
+except Exception as e:
+    st.error("Gagal memuat data. Pastikan link Google Sheets sudah disetel Publik.")
+    st.exception(e)
