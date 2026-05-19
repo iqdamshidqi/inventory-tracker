@@ -52,7 +52,7 @@ DAYS_ORDER   = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","S
 #  HEADER
 # ─────────────────────────────────────────────────────────
 st.title("🛒 Supermarket Sales Dashboard")
-st.caption("Workshop Data Analitik — Statistic Computer Course 2026 | Live Performance Monitor")
+st.caption("Workshop Data Analitik | Live Performance Monitor")
 st.divider()
 
 # ─────────────────────────────────────────────────────────
