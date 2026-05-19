@@ -91,7 +91,7 @@ try:
     # ─────────────────────────────────────────────────────
     #  SIDEBAR FILTERS
     # ─────────────────────────────────────────────────────
-    st.sidebar.header("⚙️ Filter Data")
+    st.sidebar.header("Filter Data")
 
     cabang = st.sidebar.multiselect("Cabang (Branch)", options=sorted(df_raw["Branch"].unique()), default=sorted(df_raw["Branch"].unique()))
     tipe = st.sidebar.multiselect("Tipe Pelanggan", options=list(df_raw["Customer type"].unique()), default=list(df_raw["Customer type"].unique()))
@@ -213,7 +213,7 @@ try:
     #  TAB 4 — DATA CENTER
     # ====================================================
     with tab4:
-        with st.expander("🔀 Custom Pivot Table (Untuk Eksplorasi Cepat)", expanded=True):
+        with st.expander("Custom Pivot Table (Untuk Eksplorasi Cepat)", expanded=True):
             pv1, pv2, pv3, pv4 = st.columns(4)
             pv_row = pv1.selectbox("Baris:", ["Branch","City","Product line","Customer type","Payment"])
             pv_col = pv2.selectbox("Kolom:", ["Month","DOW","Customer type","Gender"])
