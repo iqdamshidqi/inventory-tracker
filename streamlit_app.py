@@ -33,7 +33,7 @@ PLOTLY_LAYOUT = dict(
     yaxis         = dict(gridcolor=GRID_COLOR, linecolor=GRID_COLOR, showgrid=True),
     margin        = dict(l=10, r=10, t=50, b=10),
     legend        = dict(bordercolor=GRID_COLOR, borderwidth=1),
-    hoverlabel    = dict(, bordercolor=ACCENT),
+    hoverlabel    = dict(bordercolor=ACCENT),
 )
 
 def apply_theme(fig, height=380):
