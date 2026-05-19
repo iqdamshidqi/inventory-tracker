@@ -23,18 +23,17 @@ st.set_page_config(
 # ─────────────────────────────────────────────────────────
 PALETTE    = ["#38BDF8","#818CF8","#34D399","#FB923C","#F472B6","#FACC15","#A78BFA"]
 GRID_COLOR = "#334155"
-TEXT_COLOR = "#F1F5F9"
 ACCENT     = "#38BDF8"
 POS        = "#34D399"
 WARN       = "#FACC15"
 
 PLOTLY_LAYOUT = dict(
-    font          = dict(color=TEXT_COLOR, family="sans-serif", size=12),
+    font          = dict(family="sans-serif", size=12),
     xaxis         = dict(gridcolor=GRID_COLOR, linecolor=GRID_COLOR, showgrid=True),
     yaxis         = dict(gridcolor=GRID_COLOR, linecolor=GRID_COLOR, showgrid=True),
     margin        = dict(l=10, r=10, t=50, b=10),
     legend        = dict(bordercolor=GRID_COLOR, borderwidth=1),
-    hoverlabel    = dict(font_color=TEXT_COLOR, bordercolor=ACCENT),
+    hoverlabel    = dict(, bordercolor=ACCENT),
 )
 
 def apply_theme(fig, height=380):
