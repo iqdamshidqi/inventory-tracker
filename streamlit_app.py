@@ -22,8 +22,6 @@ st.set_page_config(
 #  THEME
 # ─────────────────────────────────────────────────────────
 PALETTE    = ["#38BDF8","#818CF8","#34D399","#FB923C","#F472B6","#FACC15","#A78BFA"]
-BG         = "#0F172A"
-CARD_BG    = "#1E293B"
 GRID_COLOR = "#334155"
 TEXT_COLOR = "#F1F5F9"
 ACCENT     = "#38BDF8"
@@ -31,14 +29,12 @@ POS        = "#34D399"
 WARN       = "#FACC15"
 
 PLOTLY_LAYOUT = dict(
-    paper_bgcolor = BG,
-    plot_bgcolor  = CARD_BG,
     font          = dict(color=TEXT_COLOR, family="sans-serif", size=12),
     xaxis         = dict(gridcolor=GRID_COLOR, linecolor=GRID_COLOR, showgrid=True),
     yaxis         = dict(gridcolor=GRID_COLOR, linecolor=GRID_COLOR, showgrid=True),
     margin        = dict(l=10, r=10, t=50, b=10),
-    legend        = dict(bgcolor=CARD_BG, bordercolor=GRID_COLOR, borderwidth=1),
-    hoverlabel    = dict(bgcolor=CARD_BG, font_color=TEXT_COLOR, bordercolor=ACCENT),
+    legend        = dict(bordercolor=GRID_COLOR, borderwidth=1),
+    hoverlabel    = dict(font_color=TEXT_COLOR, bordercolor=ACCENT),
 )
 
 def apply_theme(fig, height=380):
