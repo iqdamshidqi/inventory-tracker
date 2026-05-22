@@ -4,8 +4,6 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from scipy import stats
-from sklearn.linear_model import LinearRegression
 from itertools import combinations
 from collections import Counter
 import warnings
@@ -40,19 +38,10 @@ def terapkan_tema(fig, height=380):
     return fig
 
 # =====================================================================
-# LANGKAH 2: KUMPULAN FUNGSI PERAMALAN (FORECASTING)
-# Bagian ini berisi rumus matematika untuk memprediksi penjualan di Tab 5.
-# Sengaja dipisahkan di atas agar kode utama di bawah tetap mudah dibaca.
+# LANGKAH 2: FUNGSI PERAMALAN (TRIPLE EXPONENTIAL SMOOTHING)
 # =====================================================================
-def hitung_simple_exponential(data_series, alpha, langkah_kedepan):
-    n = len(data_series)
-    levels = np.zeros(n)
-    levels[0] = data_series[0]
-    for t in range(1, n):
-        levels[t] = alpha * data_series[t] + (1 - alpha) * levels[t-1]
-    return levels, [levels[-1]] * langkah_kedepan
-
 def hitung_double_exponential(data_series, alpha, beta, langkah_kedepan):
+    # Fungsi ini digunakan sebagai cadangan jika data kurang untuk dihitung musiman (seasonality)
     n = len(data_series)
     levels, trends = np.zeros(n), np.zeros(n)
     levels[0] = data_series[0]
@@ -65,6 +54,7 @@ def hitung_double_exponential(data_series, alpha, beta, langkah_kedepan):
 
 def hitung_holt_winters(data_series, alpha, beta, gamma, L, langkah_kedepan):
     n = len(data_series)
+    # Jika data kurang dari 2 siklus musiman, gunakan Double Exponential Smoothing
     if n < 2 * L or L <= 1:
         return hitung_double_exponential(data_series, alpha, beta, langkah_kedepan)
         
@@ -87,29 +77,6 @@ def hitung_holt_winters(data_series, alpha, beta, gamma, L, langkah_kedepan):
             
     prediksi = [levels[-1] + m * trends[-1] + seasonals[n - L + (m - 1) % L] for m in range(1, langkah_kedepan + 1)]
     return smoothed, prediksi
-
-def hitung_regresi_musiman(data_series, L, langkah_kedepan):
-    n = len(data_series)
-    X = np.arange(n).reshape(-1, 1)
-    model = LinearRegression().fit(X, data_series)
-    trend_history = model.predict(X)
-    
-    if n < L or L <= 1:
-        X_future = np.arange(n, n + langkah_kedepan).reshape(-1, 1)
-        return trend_history, list(model.predict(X_future))
-        
-    residuals = data_series - trend_history
-    seasonal_indices = np.array([np.mean(residuals[np.arange(i, n, L)]) for i in range(L)])
-    seasonal_indices -= np.mean(seasonal_indices)
-    
-    smoothed = trend_history + np.array([seasonal_indices[t % L] for t in range(n)])
-    trend_forecast = model.predict(np.arange(n, n + langkah_kedepan).reshape(-1, 1))
-    prediksi = [trend_forecast[m] + seasonal_indices[(n + m) % L] for m in range(langkah_kedepan)]
-    return smoothed, prediksi
-
-def hitung_moving_average(data_series, window, langkah_kedepan):
-    smoothed = pd.Series(data_series).rolling(window=window, min_periods=1).mean().values
-    return smoothed, [smoothed[-1]] * langkah_kedepan
 
 def optimasi_holt_winters(data_series, L, langkah_kedepan):
     best_mse, best_params = float("inf"), (0.2, 0.1, 0.2)
@@ -405,24 +372,17 @@ try:
         # Pengaturan Model Forecasting (Prediksi Penjualan)
         fc_col1, fc_col2 = st.columns([1, 2])
         with fc_col1:
-            st.markdown("#### ⚙️ Konfigurasi Prediksi (Forecasting)")
+            st.markdown("#### ⚙️ Konfigurasi Prediksi (Triple Exponential Smoothing)")
             selected_cat = st.selectbox("Pilih Kategori Produk:", options=sorted(data_filter["Product_Category"].unique()))
-            model_type = st.radio("Pilih Model Prediksi:", [
-                "Regresi Linear + Pola Musiman (Recommended)", "Triple Exponential Smoothing (Holt-Winters)", 
-                "Double Exponential Smoothing (Holt's Linear)", "Simple Exponential Smoothing (SES)", "Moving Average (Rata-rata Bergerak)"
-            ])
             L_period = st.number_input("Periode Musiman (Minggu):", min_value=2, max_value=12, value=4)
             
             # Default Parameter Matematika
-            alpha, beta, gamma, window_size = 0.2, 0.1, 0.2, 4
-            if model_type == "Moving Average (Rata-rata Bergerak)":
-                window_size = st.slider("Ukuran Jendela (Minggu):", 2, 12, 4)
-            elif "Exponential" in model_type:
-                auto_fit = st.checkbox("Optimasi Otomatis (Auto-Fit Model)", value=True)
-                if not auto_fit:
-                    alpha = 1.0 - (st.slider("Level Smoothing:", 0, 99, 80) / 100.0)
-                    beta = 1.0 - (st.slider("Trend Smoothing:", 0, 99, 90) / 100.0) if model_type != "Simple Exponential Smoothing (SES)" else 0.1
-                    gamma = 1.0 - (st.slider("Seasonal Smoothing:", 0, 99, 75) / 100.0) if "Triple" in model_type else 0.2
+            alpha, beta, gamma = 0.2, 0.1, 0.2
+            auto_fit = st.checkbox("Optimasi Otomatis (Auto-Fit Model)", value=True)
+            if not auto_fit:
+                alpha = 1.0 - (st.slider("Level Smoothing:", 0, 99, 80) / 100.0)
+                beta = 1.0 - (st.slider("Trend Smoothing:", 0, 99, 90) / 100.0)
+                gamma = 1.0 - (st.slider("Seasonal Smoothing:", 0, 99, 75) / 100.0)
 
         with fc_col2:
             df_cat = data_filter[data_filter["Product_Category"] == selected_cat]
@@ -439,16 +399,12 @@ try:
                 if len(y) >= 2:
                     future_steps = 8
                     
-                    if "Exponential" in model_type and auto_fit:
+                    if auto_fit:
                         alpha, beta, gamma = optimasi_holt_winters(y, int(L_period), future_steps)
                         st.success(f"🤖 **Parameter Optimal:** α=`{alpha:.2f}`, β=`{beta:.2f}`, γ=`{gamma:.2f}`")
 
-                    # Memilih model untuk dihitung
-                    if "Regresi" in model_type: smoothed, forecast = hitung_regresi_musiman(y, int(L_period), future_steps)
-                    elif "Triple" in model_type: smoothed, forecast = hitung_holt_winters(y, alpha, beta, gamma, int(L_period), future_steps)
-                    elif "Double" in model_type: smoothed, forecast = hitung_double_exponential(y, alpha, beta, future_steps)
-                    elif "Simple" in model_type: smoothed, forecast = hitung_simple_exponential(y, alpha, future_steps)
-                    else: smoothed, forecast = hitung_moving_average(y, int(window_size), future_steps)
+                    # Memilih model untuk dihitung secara otomatis (Triple Exponential Smoothing / Holt-Winters)
+                    smoothed, forecast = hitung_holt_winters(y, alpha, beta, gamma, int(L_period), future_steps)
 
                     forecast = np.clip(forecast, 0, None) # Mencegah prediksi bernilai minus
                     future_dates = [df_weekly["Tanggal_Minggu"].max() + pd.Timedelta(weeks=i+1) for i in range(future_steps)]
