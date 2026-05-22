@@ -130,28 +130,9 @@ try:
     rentang_tanggal = st.sidebar.date_input("Rentang Tanggal", value=(min_tgl, max_tgl), min_value=min_tgl, max_value=max_tgl)
 
     # Filter Kategori (Pilihan Ganda)
-    pilih_gender = st.sidebar.multiselect("Gender", options=sorted(data_awal["Gender"].unique()), default=sorted(data_awal["Gender"].unique()))
-    pilih_kota = st.sidebar.multiselect("Kota (City)", options=sorted(data_awal["City"].unique()), default=sorted(data_awal["City"].unique()))
     pilih_kategori = st.sidebar.multiselect("Kategori Produk", options=sorted(data_awal["Product_Category"].unique()), default=sorted(data_awal["Product_Category"].unique()))
+    pilih_kota = st.sidebar.multiselect("Kota (City)", options=sorted(data_awal["City"].unique()), default=sorted(data_awal["City"].unique()))
     pilih_perangkat = st.sidebar.multiselect("Perangkat (Device)", options=sorted(data_awal["Device_Type"].unique()), default=sorted(data_awal["Device_Type"].unique()))
-    pilih_bayar = st.sidebar.multiselect("Metode Pembayaran", options=sorted(data_awal["Payment_Method"].unique()), default=sorted(data_awal["Payment_Method"].unique()))
-
-    # Filter Angka (Slider)
-    min_umur, max_umur = int(data_awal["Age"].min()), int(data_awal["Age"].max())
-    rentang_umur = st.sidebar.slider("Rentang Umur", min_umur, max_umur, (min_umur, max_umur))
-    
-    min_rating, max_rating = int(data_awal["Customer_Rating"].min()), int(data_awal["Customer_Rating"].max())
-    rentang_rating = st.sidebar.slider("Rating Pelanggan", min_rating, max_rating, (min_rating, max_rating))
-    
-    min_kirim, max_kirim = int(data_awal["Delivery_Time_Days"].min()), int(data_awal["Delivery_Time_Days"].max())
-    rentang_kirim = st.sidebar.slider("Waktu Pengiriman (Hari)", min_kirim, max_kirim, (min_kirim, max_kirim))
-    
-    min_qty, max_qty = int(data_awal["Quantity"].min()), int(data_awal["Quantity"].max())
-    rentang_qty = st.sidebar.slider("Jumlah Item (Qty)", min_qty, max_qty, (min_qty, max_qty))
-
-    # Filter Pilihan Tunggal (Radio)
-    pelanggan_kembali = st.sidebar.radio("Pelanggan Kembali", ["Semua", "Ya", "Tidak"], horizontal=True)
-    filter_diskon = st.sidebar.radio("Diskon", ["Semua", "Ada Diskon", "Tanpa Diskon"], horizontal=True)
 
     # Tombol Refresh Data
     if st.sidebar.button("🔄 Sinkronisasi Data Terbaru"):
@@ -165,22 +146,10 @@ try:
         data_filter = data_filter[(data_filter["Date"].dt.date >= rentang_tanggal[0]) & (data_filter["Date"].dt.date <= rentang_tanggal[1])]
 
     data_filter = data_filter[
-        data_filter["Gender"].isin(pilih_gender) &
-        data_filter["City"].isin(pilih_kota) &
         data_filter["Product_Category"].isin(pilih_kategori) &
-        data_filter["Device_Type"].isin(pilih_perangkat) &
-        data_filter["Payment_Method"].isin(pilih_bayar) &
-        (data_filter["Age"] >= rentang_umur[0]) & (data_filter["Age"] <= rentang_umur[1]) &
-        (data_filter["Customer_Rating"] >= rentang_rating[0]) & (data_filter["Customer_Rating"] <= rentang_rating[1]) &
-        (data_filter["Delivery_Time_Days"] >= rentang_kirim[0]) & (data_filter["Delivery_Time_Days"] <= rentang_kirim[1]) &
-        (data_filter["Quantity"] >= rentang_qty[0]) & (data_filter["Quantity"] <= rentang_qty[1])
+        data_filter["City"].isin(pilih_kota) &
+        data_filter["Device_Type"].isin(pilih_perangkat)
     ]
-
-    if pelanggan_kembali == "Ya": data_filter = data_filter[data_filter["Is_Returning_Customer"] == True]
-    elif pelanggan_kembali == "Tidak": data_filter = data_filter[data_filter["Is_Returning_Customer"] == False]
-
-    if filter_diskon == "Ada Diskon": data_filter = data_filter[data_filter["Ada_Diskon"] == True]
-    elif filter_diskon == "Tanpa Diskon": data_filter = data_filter[data_filter["Ada_Diskon"] == False]
 
     # Informasi jumlah data setelah difilter
     st.sidebar.divider()
