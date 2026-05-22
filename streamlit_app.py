@@ -164,19 +164,14 @@ try:
     # LANGKAH 5: MENAMPILKAN ANGKA RINGKASAN (KPI METRICS)
     # =====================================================================
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("💰 Total Revenue", f"₺{data_filter['Total_Amount'].sum():,.0f}", f"{len(data_filter):,} Transaksi")
-    k2.metric("👥 Pelanggan Unik", f"{data_filter['Customer_ID'].nunique():,}", f"{data_filter['Is_Returning_Customer'].mean()*100:.1f}% Kembali")
-    k3.metric("🛍️ Avg Basket Size (AOV)", f"₺{data_filter['Total_Amount'].mean():,.0f}", "per Transaksi")
-    k4.metric("⭐ Avg Rating", f"{data_filter['Customer_Rating'].mean():.2f} / 5", f"{data_filter['Delivery_Time_Days'].mean():.1f} hari avg kirim")
-
-    k5, k6, k7, k8 = st.columns(4)
+    
     total_revenue = data_filter['Total_Amount'].sum()
     persentase_diskon = (data_filter['Discount_Amount'].sum() / total_revenue * 100) if total_revenue > 0 else 0
     
-    k5.metric("🏷️ Total Diskon", f"₺{data_filter['Discount_Amount'].sum():,.0f}", f"{persentase_diskon:.1f}% dari Revenue")
-    k6.metric("📦 Avg Quantity", f"{data_filter['Quantity'].mean():.1f} Item", "per Transaksi")
-    k7.metric("⏱️ Avg Session Duration", f"{data_filter['Session_Duration_Minutes'].mean():.1f} Mnt", f"{data_filter['Pages_Viewed'].mean():.1f} hal dilihat")
-    k8.metric("💵 Avg Unit Price", f"₺{data_filter['Unit_Price'].mean():,.0f}", "Harga Satuan")
+    k1.metric("💰 Total Revenue", f"₺{total_revenue:,.0f}", f"{len(data_filter):,} Transaksi")
+    k2.metric("🏷️ Total Diskon", f"₺{data_filter['Discount_Amount'].sum():,.0f}", f"{persentase_diskon:.1f}% dari Revenue")
+    k3.metric("⏱️ Avg Session Duration", f"{data_filter['Session_Duration_Minutes'].mean():.1f} Mnt", f"{data_filter['Pages_Viewed'].mean():.1f} hal dilihat")
+    k4.metric("⭐ Avg Rating", f"{data_filter['Customer_Rating'].mean():.2f} / 5", f"{data_filter['Delivery_Time_Days'].mean():.1f} hari avg kirim")
 
     st.divider()
 
