@@ -214,11 +214,9 @@ try:
     # =====================================================================
     # LANGKAH 6: MEMBUAT HALAMAN TABS
     # =====================================================================
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "📈 Executive Summary & KPI",
         "👥 Demografi & Segmentasi",
-        "💻 Perilaku Digital & Konversi",
-        "🔄 Retensi & Lifetime Value",
         "🏷️ Strategi Produk & Harga",
         "📋 Data Center",
     ])
@@ -290,80 +288,9 @@ try:
             st.plotly_chart(terapkan_tema(fig.update_coloraxes(showscale=False), 350), use_container_width=True)
 
     # ---------------------------------------------------------
-    # TAB 3: PERILAKU DIGITAL & KONVERSI
+    # TAB 3: STRATEGI PRODUK & HARGA (DENGAN FORECASTING)
     # ---------------------------------------------------------
     with tab3:
-        st.subheader("📱 Performa Perangkat (Mobile, Desktop, Tablet)")
-        per_device = data_filter.groupby("Device_Type").agg(
-            Traffic=("Order_ID", "count"), Revenue=("Total_Amount", "sum"), Avg_Session=("Session_Duration_Minutes", "mean"),
-            Avg_Pages=("Pages_Viewed", "mean"), Avg_Spending=("Total_Amount", "mean"), Avg_Rating=("Customer_Rating", "mean")
-        ).reset_index()
-
-        c1, c2 = st.columns(2)
-        with c1:
-            fig = px.bar(per_device, x="Device_Type", y="Traffic", color="Device_Type", color_discrete_sequence=PALETTE, title="Traffic per Perangkat")
-            st.plotly_chart(terapkan_tema(fig, 350), use_container_width=True)
-        with c2:
-            fig = px.bar(per_device, x="Device_Type", y="Revenue", color="Device_Type", color_discrete_sequence=PALETTE, title="Revenue per Perangkat")
-            st.plotly_chart(terapkan_tema(fig, 350), use_container_width=True)
-
-        st.markdown("#### 📊 Tabel Ringkasan Performa Perangkat")
-        tbl_device = per_device.copy()
-        for col in ["Revenue", "Avg_Spending"]: tbl_device[col] = tbl_device[col].apply(lambda v: f"₺{v:,.0f}")
-        tbl_device["Avg_Session"] = tbl_device["Avg_Session"].apply(lambda v: f"{v:.1f} mnt")
-        tbl_device["Avg_Rating"] = tbl_device["Avg_Rating"].apply(lambda v: f"{v:.2f} ⭐")
-        st.dataframe(tbl_device, use_container_width=True, hide_index=True)
-
-    # ---------------------------------------------------------
-    # TAB 4: RETENSI & LIFETIME VALUE
-    # ---------------------------------------------------------
-    with tab4:
-        st.subheader("🔄 Retensi Pelanggan & Kontribusi Revenue")
-        df_unik = data_filter.drop_duplicates("Customer_ID")
-        rate_kembali = df_unik["Is_Returning_Customer"].mean() * 100
-
-        c1, c2 = st.columns(2)
-        with c1:
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number", value=rate_kembali, number={"suffix": "%"}, title={"text": "Returning Customer Rate"},
-                gauge={"axis": {"range": [0, 100]}, "bar": {"color": ACCENT}}
-            ))
-            st.plotly_chart(terapkan_tema(fig, 350), use_container_width=True)
-        with c2:
-            rev_status = data_filter.groupby("Is_Returning_Customer")["Total_Amount"].sum().reset_index()
-            rev_status["Status"] = rev_status["Is_Returning_Customer"].map({True: "🔄 Returning", False: "🆕 New"})
-            fig = px.bar(rev_status, x="Status", y="Total_Amount", color="Status", color_discrete_sequence=[POS, ACCENT], title="Kontribusi Revenue: Returning vs New")
-            st.plotly_chart(terapkan_tema(fig, 350), use_container_width=True)
-
-        # Perhitungan Customer Lifetime Value (CLV)
-        st.subheader("💎 Estimasi Customer Lifetime Value (CLV)")
-        cust_stats = data_filter.groupby("Customer_ID").agg(Total_Spend=("Total_Amount", "sum"), Total_Orders=("Order_ID", "count"), First_Date=("Date", "min"), Last_Date=("Date", "max")).reset_index()
-        cust_stats["Lifespan_Days"] = (cust_stats["Last_Date"] - cust_stats["First_Date"]).dt.days.replace(0, 30)
-        cust_stats["AOV"] = cust_stats["Total_Spend"] / cust_stats["Total_Orders"]
-        cust_stats["Monthly_Frequency"] = cust_stats["Total_Orders"] / (cust_stats["Lifespan_Days"] / 30)
-        
-        avg_aov, avg_freq, avg_lifespan_months = cust_stats["AOV"].mean(), cust_stats["Monthly_Frequency"].mean(), cust_stats["Lifespan_Days"].mean() / 30
-        estimated_clv = avg_aov * avg_freq * avg_lifespan_months
-
-        ck1, ck2, ck3, ck4 = st.columns(4)
-        ck1.metric("💎 Estimasi CLV", f"₺{estimated_clv:,.0f}")
-        ck2.metric("🛍️ Rata-rata Pesanan (AOV)", f"₺{avg_aov:,.0f}")
-        ck3.metric("📅 Frekuensi Belanja", f"{avg_freq:.2f}x / bln")
-        ck4.metric("⏳ Lifespan Rata-rata", f"{avg_lifespan_months:.1f} bln")
-
-        cust_stats["CLV"] = cust_stats["AOV"] * cust_stats["Monthly_Frequency"] * (cust_stats["Lifespan_Days"] / 30)
-        fig = px.histogram(cust_stats, x="CLV", nbins=50, color_discrete_sequence=[ACCENT], title="Distribusi Estimasi CLV")
-        st.plotly_chart(terapkan_tema(fig, 350), use_container_width=True)
-
-        st.markdown("#### 🏆 Top 10 Pelanggan Berdasarkan Nilai CLV")
-        top_clv = cust_stats.nlargest(10, "CLV")[["Customer_ID", "Total_Spend", "Total_Orders", "AOV", "Lifespan_Days", "CLV"]].copy()
-        for col in ["Total_Spend", "AOV", "CLV"]: top_clv[col] = top_clv[col].apply(lambda v: f"₺{v:,.0f}")
-        st.dataframe(top_clv, use_container_width=True, hide_index=True)
-
-    # ---------------------------------------------------------
-    # TAB 5: STRATEGI PRODUK & HARGA (DENGAN FORECASTING)
-    # ---------------------------------------------------------
-    with tab5:
         st.subheader("📦 Kontribusi Revenue per Kategori Produk")
         rev_cat = data_filter.groupby("Product_Category").agg(Revenue=("Total_Amount", "sum")).reset_index()
         fig = px.treemap(rev_cat, path=["Product_Category"], values="Revenue", color="Revenue", color_continuous_scale=["#1E293B", ACCENT, "#818CF8"])
@@ -443,9 +370,9 @@ try:
                 st.success(f"💡 **Rekomendasi Bundling:** Pelanggan yang membeli **{top_1['Kategori A']}** sangat sering membeli **{top_1['Kategori B']}**.")
 
     # ---------------------------------------------------------
-    # TAB 6: DATA CENTER & UNDUH
+    # TAB 4: DATA CENTER & UNDUH
     # ---------------------------------------------------------
-    with tab6:
+    with tab4:
         st.subheader("📋 Data Center & Eksplorasi Data")
         
         # Tombol Unduh
