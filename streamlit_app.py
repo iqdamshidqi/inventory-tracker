@@ -41,7 +41,6 @@ def terapkan_tema(fig, height=380):
 # LANGKAH 2: FUNGSI PERAMALAN (TRIPLE EXPONENTIAL SMOOTHING)
 # =====================================================================
 def hitung_double_exponential(data_series, alpha, beta, langkah_kedepan):
-    # Fungsi ini digunakan sebagai cadangan jika data kurang untuk dihitung musiman (seasonality)
     n = len(data_series)
     levels, trends = np.zeros(n), np.zeros(n)
     levels[0] = data_series[0]
@@ -54,7 +53,6 @@ def hitung_double_exponential(data_series, alpha, beta, langkah_kedepan):
 
 def hitung_holt_winters(data_series, alpha, beta, gamma, L, langkah_kedepan):
     n = len(data_series)
-    # Jika data kurang dari 2 siklus musiman, gunakan Double Exponential Smoothing
     if n < 2 * L or L <= 1:
         return hitung_double_exponential(data_series, alpha, beta, langkah_kedepan)
         
@@ -90,7 +88,7 @@ def optimasi_holt_winters(data_series, L, langkah_kedepan):
     return best_params
 
 # =====================================================================
-# LANGKAH 3: MEMBACA DATA DARI GOOGLE SHEETS
+# LANGKAH 3: MEMBACA DATA DARI GOOGLE SHEETS & PREPROCESSING
 # =====================================================================
 st.title("🛍️ E-Commerce Customer Behavior Analytics")
 st.caption("Workshop Data Analitik | Live Customer Performance Monitor")
@@ -98,14 +96,37 @@ st.divider()
 
 @st.cache_data(ttl=60)
 def ambil_data():
-    # Link Google Sheets (diubah menjadi format export CSV agar bisa dibaca pandas)
     sheet_id = "1RFF-5XhqHbtHqXmzTVjgTmGekd763wyZsAEVhMJ-PAc"
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
     
-    # Membaca data
     df = pd.read_csv(url)
     
-    # Membersihkan dan menyiapkan kolom tambahan
+    # ---------------------------------------------------------
+    # A. Imputasi Missing Value
+    # ---------------------------------------------------------
+    for col in ["Customer_Rating", "Age", "Session_Duration_Minutes"]:
+        if df[col].isnull().sum() > 0:
+            df[col] = df[col].fillna(df[col].median())
+            
+    for col in ["City", "Device_Type", "Payment_Method", "Gender", "Product_Category"]:
+        if df[col].isnull().sum() > 0:
+            df[col] = df[col].fillna(df[col].mode()[0])
+
+    # ---------------------------------------------------------
+    # B. Penghapusan Outlier (Metode IQR)
+    # ---------------------------------------------------------
+    kolom_outlier = ["Total_Amount", "Quantity"]
+    for col in kolom_outlier:
+        Q1 = df[col].quantile(0.25)
+        Q3 = df[col].quantile(0.75)
+        IQR = Q3 - Q1
+        batas_bawah = Q1 - 1.5 * IQR
+        batas_atas = Q3 + 1.5 * IQR
+        df = df[(df[col] >= batas_bawah) & (df[col] <= batas_atas)]
+
+    # ---------------------------------------------------------
+    # Persiapan Data Dasar (Wajib untuk grafik Streamlit)
+    # ---------------------------------------------------------
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
     df["Bulan"] = df["Date"].dt.to_period("M").astype(str)
     df["Tahun"] = df["Date"].dt.year
@@ -115,6 +136,7 @@ def ambil_data():
         labels=["≤18", "19-25", "26-35", "36-45", "46-55", "56+"],
     )
     df["Ada_Diskon"] = df["Discount_Amount"] > 0
+    
     return df
 
 try:
@@ -125,21 +147,17 @@ try:
     # =====================================================================
     st.sidebar.header("Filter Data")
 
-    # Filter Tanggal
     min_tgl, max_tgl = data_awal["Date"].min().date(), data_awal["Date"].max().date()
     rentang_tanggal = st.sidebar.date_input("Rentang Tanggal", value=(min_tgl, max_tgl), min_value=min_tgl, max_value=max_tgl)
 
-    # Filter Kategori (Pilihan Ganda)
     pilih_kategori = st.sidebar.multiselect("Kategori Produk", options=sorted(data_awal["Product_Category"].unique()), default=sorted(data_awal["Product_Category"].unique()))
     pilih_kota = st.sidebar.multiselect("Kota (City)", options=sorted(data_awal["City"].unique()), default=sorted(data_awal["City"].unique()))
     pilih_perangkat = st.sidebar.multiselect("Perangkat (Device)", options=sorted(data_awal["Device_Type"].unique()), default=sorted(data_awal["Device_Type"].unique()))
 
-    # Tombol Refresh Data
     if st.sidebar.button("🔄 Sinkronisasi Data Terbaru"):
         st.cache_data.clear()
         st.rerun()
 
-    # Menerapkan Filter pada Data
     data_filter = data_awal.copy()
     
     if isinstance(rentang_tanggal, tuple) and len(rentang_tanggal) == 2:
@@ -151,10 +169,8 @@ try:
         data_filter["Device_Type"].isin(pilih_perangkat)
     ]
 
-    # Informasi jumlah data setelah difilter
     st.sidebar.divider()
     st.sidebar.markdown(f"**📊 Data Terfilter:** `{len(data_filter):,}` dari `{len(data_awal):,}` baris")
-    st.sidebar.markdown(f"**👥 Pelanggan Unik:** `{data_filter['Customer_ID'].nunique():,}`")
 
     if data_filter.empty:
         st.warning("Tidak ada data yang sesuai dengan filter.")
@@ -189,7 +205,6 @@ try:
     # TAB 1: EXECUTIVE SUMMARY
     # ---------------------------------------------------------
     with tab1:
-        # Grafik Tren Bulanan
         per_bulan = data_filter.groupby("Bulan").agg(Revenue=("Total_Amount", "sum"), Transactions=("Order_ID", "count")).reset_index()
         fig = make_subplots(specs=[[{"secondary_y": True}]])
         fig.add_trace(go.Bar(x=per_bulan["Bulan"], y=per_bulan["Revenue"], name="Revenue (₺)", marker_color=ACCENT), secondary_y=False)
@@ -260,14 +275,13 @@ try:
         fig = px.treemap(rev_cat, path=["Product_Category"], values="Revenue", color="Revenue", color_continuous_scale=["#1E293B", ACCENT, "#818CF8"])
         st.plotly_chart(terapkan_tema(fig.update_coloraxes(showscale=False), 400), use_container_width=True)
 
-        # Pengaturan Model Forecasting (Prediksi Penjualan)
+        # Pengaturan Model Forecasting
         fc_col1, fc_col2 = st.columns([1, 2])
         with fc_col1:
             st.markdown("#### ⚙️ Konfigurasi Prediksi (Triple Exponential Smoothing)")
             selected_cat = st.selectbox("Pilih Kategori Produk:", options=sorted(data_filter["Product_Category"].unique()))
             L_period = st.number_input("Periode Musiman (Minggu):", min_value=2, max_value=12, value=4)
             
-            # Default Parameter Matematika
             alpha, beta, gamma = 0.2, 0.1, 0.2
             auto_fit = st.checkbox("Optimasi Otomatis (Auto-Fit Model)", value=True)
             if not auto_fit:
@@ -278,11 +292,9 @@ try:
         with fc_col2:
             df_cat = data_filter[data_filter["Product_Category"] == selected_cat]
             if not df_cat.empty:
-                # Siapkan data mingguan
                 df_weekly = df_cat.groupby(df_cat["Date"].dt.to_period("W")).agg(Quantity=("Quantity", "sum")).reset_index()
                 df_weekly["Tanggal_Minggu"] = df_weekly["Date"].dt.start_time.sort_values()
                 
-                # Buang minggu terakhir jika belum genap 7 hari
                 if (data_filter["Date"].max() - df_weekly["Tanggal_Minggu"].iloc[-1]).days + 1 < 7:
                     df_weekly = df_weekly.iloc[:-1]
                 
@@ -294,13 +306,10 @@ try:
                         alpha, beta, gamma = optimasi_holt_winters(y, int(L_period), future_steps)
                         st.success(f"🤖 **Parameter Optimal:** α=`{alpha:.2f}`, β=`{beta:.2f}`, γ=`{gamma:.2f}`")
 
-                    # Memilih model untuk dihitung secara otomatis (Triple Exponential Smoothing / Holt-Winters)
                     smoothed, forecast = hitung_holt_winters(y, alpha, beta, gamma, int(L_period), future_steps)
-
-                    forecast = np.clip(forecast, 0, None) # Mencegah prediksi bernilai minus
+                    forecast = np.clip(forecast, 0, None) 
                     future_dates = [df_weekly["Tanggal_Minggu"].max() + pd.Timedelta(weeks=i+1) for i in range(future_steps)]
 
-                    # Gambar Grafik Prediksi
                     fig_fc = go.Figure([
                         go.Scatter(x=df_weekly["Tanggal_Minggu"], y=y, name="Data Aktual", mode="lines+markers", line=dict(color="rgba(56, 189, 248, 0.4)", width=2)),
                         go.Scatter(x=df_weekly["Tanggal_Minggu"], y=smoothed, name="Hasil Fitting", line=dict(color=ACCENT, width=3)),
@@ -315,7 +324,6 @@ try:
                 else: st.warning("Data kurang (minimal butuh 2 minggu data lengkap).")
 
         st.subheader("🛒 Produk Terpopuler di Setiap Kota & Produk Sering Dibeli Bersama")
-        # Analisis Pasangan (Market Basket)
         cust_cats = data_filter.groupby("Customer_ID")["Product_Category"].apply(set).reset_index()
         cust_multi = cust_cats[cust_cats["Product_Category"].apply(len) >= 2]
 
@@ -339,7 +347,6 @@ try:
     with tab4:
         st.subheader("📋 Data Center & Eksplorasi Data")
         
-        # Tombol Unduh
         csv_data = data_filter.to_csv(index=False).encode('utf-8')
         st.download_button(label="📥 Unduh Data Terfilter (CSV)", data=csv_data, file_name="ecommerce_data_terfilter.csv", mime="text/csv")
         
